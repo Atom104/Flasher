@@ -1,6 +1,6 @@
 
 #include <ESPSerialFlasher.h>
-// #include "SD.h"
+#include <SD.h>
 
 /*
 in extras folder is a binary file with the WifiNiNa module firmware version 14.8
@@ -18,18 +18,25 @@ to the sd card. Then you would use this routine to update the wifi firmware.
 *flashing process.
 
  */
+void tick(int prg)
+{
+  Serial.print("Prpgress...");
+  Serial.println(prg);
+}
  
 void setup() {
 Serial.begin(115200);         // Start communication With IDE to see whats going on
-delay(5000);                  // wait 5 seconds before atarting
-//  if(SD.begin(10))             //Must begin SD CARD before trying to flash Wifi module, will fail if not connected
-//  {
+delay(1000);                  // wait 5 seconds before atarting
+ if(SD.begin(5))             //Must begin SD CARD before trying to flash Wifi module, will fail if not connected
+ {
  ESPFlasherInit(true, &Serial);//sets up Serial communication to wifi module, with debug messages, to Print Class of your choice
  //ESPFlasherInit(true);     //sets up communication to wifi module, sets printing debug statements to Serial 
  //ESPFlasherInit();          //sets up communication to wifi module, no debug messages
  ESPFlasherConnect();         //connects to wifi module
- ESPFlashBin("NINAFW.BIN");   //flashes "NINAFW.BIN" binary file from SD card to wifi module
-//  }
+ ESPFlashBin("/firmware.bin", 0x10000);   //flashes "NINAFW.BIN" binary file from SD card to wifi module
+//  ESPFlashBin("firmware1.bin", 0x10000);   //flashes "NINAFW.BIN" binary file from SD card to wifi module
+//  ESPFlashBin("firmware2.bin", 0x10000);   //flashes "NINAFW.BIN" binary file from SD card to wifi module
+ }
 }
 
 void loop() {
