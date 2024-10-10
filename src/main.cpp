@@ -473,11 +473,12 @@ void loop()
       if (cursor == 1)
       {
         CHAR_select--;
+        if(CHAR_select<0) CHAR_select = 0;
         print_page_1(-1);
       }
     }
   }
-  if (!digitalRead(LEFT_BTN) && !digitalRead(RIGTH_BTN))
+  if (!digitalRead(LEFT_BTN) && btn_R.isHold())
   {
     oled.clear();
     oled.setCursorXY(40, 20);
