@@ -7,6 +7,9 @@ GButton btn_R(RIGTH_BTN);
 GyverOLED<SSD1306_128x64, OLED_BUFFER> oled;
 
 // int files_count = 0;
+
+uint8_t bat_level;
+uint8_t last_bat_level;
 int select_file = 0;
 int max_select_file = 0;
 int page = 0;
@@ -17,13 +20,22 @@ String str;
 char ADDR[9] = "00010000";
 int select_char_in_array = 0;
 int CHAR_select = -1;
+
+void IRAM_ATTR interrupt()
+{
+  btn_L.tick();
+  btn_C.tick();
+  btn_R.tick();
+}
+
+int x_dop = 32;
 void print_addr(int char_select)
 {
   // strtoul(ADDR, NULL, 16);
   if (char_select >= 0)
-    oled.line(13 + char_select * 6, 39, 7 + 12 + char_select * 6, 39);
+    oled.line(x_dop + 13 + char_select * 6, 39, x_dop + 7 + 12 + char_select * 6, 39);
   // oled.roundRect(13+char_select*5,30, 7+12+char_select*5, 30+5);
-  oled.setCursorXY(2, 30);
+  oled.setCursorXY(2 + x_dop, 30);
   oled.print("0x");
   oled.print(ADDR);
 }
@@ -84,10 +96,23 @@ void print_files(int select)
     rect_pos = (select) % 4;
   else
     rect_pos = select;
-  oled.line(0, 12, 127, 12);
-  oled.roundRect(0, rect_pos * 12 + 14, 127, 14 + 12 + 12 * rect_pos, OLED_STROKE);
-  // oled.setCursor(1, select * (-1));
   oled.setScale(1);
+
+  oled.rect(126, 3, 127, 5, OLED_FILL);
+  oled.rect(114, 1, 126, 7, OLED_STROKE);
+  oled.rect(115, 2, map(bat_level, 0, 100, 0, 10) + 115, 6, OLED_FILL);
+
+  oled.setCursorXY(4, 3);
+  oled.print("i");
+
+  oled.line(0, 12, 127, 12);
+  if (select > -1)
+    oled.roundRect(0, rect_pos * 12 + 14, 127, 14 + 12 + 12 * rect_pos, OLED_STROKE);
+  else
+  {
+    oled.roundRect(0, 0, 11, 11, OLED_STROKE);
+  }
+  // oled.setCursor(1, select * (-1));
 
   int start_list = 4 * ((select) / 4);
   int end_list;
@@ -119,7 +144,7 @@ void print_page_1(int select)
   }
   if (select == 1)
   {
-    oled.roundRect(0, 28, 63, 38, OLED_STROKE);
+    oled.roundRect(0 + x_dop, 28, 63 + x_dop, 38, OLED_STROKE);
   }
   print_addr(CHAR_select);
   oled.setCursorXY(50, 52);
@@ -130,14 +155,40 @@ void print_page_1(int select)
   oled.print(str);
   oled.update();
 }
+int info_select = 0;
+void print_info()
+{
+  oled.clear();
+  if (info_select == 0)
+  {
+    oled.roundRect(0, 0, 9, 10, OLED_STROKE);
+  }
+  else if (info_select == 1)
+  {
+    oled.roundRect(0, 13, 63, 13 + 10, OLED_STROKE);
+  }
+  else if (info_select == 2)
+  {
+    oled.roundRect(0, 27, 40, 27 + 10, OLED_STROKE);
+  }
+  oled.setCursorXY(2, 2);
+  oled.print("<");
+  oled.setCursorXY(2, 15);
+  oled.print("Board info");
+  oled.setCursorXY(2, 29);
+  oled.print("EARASE");
+  oled.update();
+}
 
 void setup()
 {
+  attachInterrupt(1, interrupt, CHANGE);
+  pinMode(BAT_LEVEL_PIN, INPUT);
   EEPROM.begin(1000);
   EEPROM.get(0, ADDR);
   init_btns();
-  Wire.setClock(800000L);
   oled.init();
+  Wire.setClock(800000L);
   oled.clear();
   oled.flipV(true);
   oled.flipH(true);
@@ -161,18 +212,7 @@ void setup()
       file = root.openNextFile();
     }
     print_files(select_file);
-    ESPFlasherInit(true, &Serial); // sets up Serial communication to wifi module, with debug messages, to Print Class of your choice
-    // ESPFlasherInit(true);     //sets up communication to wifi module, sets printing debug statements to Serial
-    // ESPFlasherInit();          //sets up communication to wifi module, no debug messages
-    // esp_loader_error_t err = ESPFlasherConnect();
-    // if (err != ESP_LOADER_SUCCESS)
-    // {
-    // }
-    // else
-    // {
-    //   Serial.println("ESP8266");
-    //   ESPFlashBin("/firmware8266.bin", 0x00000);
-    // }
+    ESPFlasherInit(true, &Serial);
   }
 }
 
@@ -198,7 +238,14 @@ void loop()
         str.toCharArray(buf, 255);
         Serial.print("0x");
         Serial.println(strtoul(ADDR, NULL, 16), HEX);
-        uint8_t err = flasing(buf, strtoul(ADDR, NULL, 16));
+        ESPFlasherInit(true, &Serial);
+        uint8_t err = flasing("/bootloader.bin", 0x1000);
+          oled.clear();
+        ESPFlasherInit(true, &Serial);
+        err = flasing("/partitions.bin", 0x8000);
+          oled.clear();
+        ESPFlasherInit(true, &Serial);
+        err = flasing(buf, strtoul(ADDR, NULL, 16));
         if (err == CONNECT_ERROR)
         {
           Serial.println("Connect error");
@@ -208,6 +255,16 @@ void loop()
           oled.setCursorXY(20, 27);
           oled.print("Connect error!");
           oled.update();
+        }
+        else
+        {
+          oled.clear();
+          oled.setScale(1);
+          oled.setCursorXY(40, 27);
+          oled.print("SUCCESS");
+          oled.update();
+          delay(500);
+          print_page_1(cursor);
         }
       }
       else if (cursor == 0)
@@ -241,13 +298,30 @@ void loop()
     }
     else if (page == 0)
     {
-      page = 1;
-      cursor = 2;
-      Serial.print("page ");
-      Serial.println(page);
-      print_page_1(cursor);
+      if (select_file > -1)
+      {
+        page = 1;
+        cursor = 2;
+        Serial.print("page ");
+        Serial.println(page);
+        print_page_1(cursor);
+      }
+      else if (select_file == -1)
+      {
+        page = 3;
+        print_info();
+      }
+    }
+    else if (page == 3)
+    {
+      if (info_select == 0)
+      {
+        page = 0;
+        print_files(select_file);
+      }
     }
   }
+
   if (btn_R.isSingle())
   {
     if (page == 0)
@@ -275,14 +349,22 @@ void loop()
         print_page_1(-1);
       }
     }
+    else if (page == 3)
+    {
+      info_select++;
+      if (info_select > 2)
+        info_select = 2;
+      print_info();
+    }
   }
+
   if (btn_L.isSingle())
   {
     if (page == 0)
     {
       select_file--;
-      if (select_file < 0)
-        select_file = 0;
+      if (select_file < -1)
+        select_file = -1;
       print_files(select_file);
     }
     else if (page == 1)
@@ -305,6 +387,21 @@ void loop()
         print_page_1(-1);
       }
     }
-    // else if(page == 2)
+    else if (page == 3)
+    {
+      info_select--;
+      if (info_select < 0)
+        info_select = 0;
+      print_info();
+    }
+  }
+  bat_level = constrain(map(KalmanFilter(analogRead(BAT_LEVEL_PIN)), 3250, 3550, 0, 100), 0, 100);
+  if (page == 0)
+  {
+    if (last_bat_level != map(bat_level, 0, 100, 0, 10))
+    {
+      print_files(select_file);
+      last_bat_level = map(bat_level, 0, 100, 0, 10);
+    }
   }
 }
