@@ -79,7 +79,7 @@ void init_btns()
   btn_L.setClickTimeout(50);
   btn_C.setDebounce(50); // настройка антидребезга (по умолчанию 80 мс)
   btn_C.setTimeout(300); // настройка таймаута на удержание (по умолчанию 500 мс)
-  btn_C.setClickTimeout(100);
+  btn_C.setClickTimeout(250);
   btn_R.setDebounce(50); // настройка антидребезга (по умолчанию 80 мс)
   btn_R.setTimeout(300); // настройка таймаута на удержание (по умолчанию 500 мс)
   btn_R.setClickTimeout(50);
@@ -100,7 +100,7 @@ void print_files(int select)
 
   oled.rect(126, 3, 127, 5, OLED_FILL);
   oled.rect(114, 1, 126, 7, OLED_STROKE);
-  oled.rect(115, 2, map(bat_level, 0, 100, 0, 10) + 115, 6, OLED_FILL);
+  oled.rect(115, 2, bat_level + 115, 6, OLED_FILL);
 
   oled.setCursorXY(4, 3);
   oled.print("i");
@@ -130,6 +130,8 @@ void print_files(int select)
 
   oled.update();
 }
+
+bool Auto_mode = 0;
 void print_page_1(int select)
 {
   str = "/" + files[select_file];
@@ -165,18 +167,29 @@ void print_info()
   }
   else if (info_select == 1)
   {
-    oled.roundRect(0, 13, 63, 13 + 10, OLED_STROKE);
+    oled.roundRect(0, 13, 76, 13 + 10, OLED_STROKE);
   }
   else if (info_select == 2)
   {
-    oled.roundRect(0, 27, 40, 27 + 10, OLED_STROKE);
+    oled.roundRect(0, 27, 63, 27 + 10, OLED_STROKE);
+  }
+  else if (info_select == 3)
+  {
+    oled.roundRect(0, 41, 40, 41 + 10, OLED_STROKE);
   }
   oled.setCursorXY(2, 2);
   oled.print("<");
-  oled.setCursorXY(2, 15);
-  oled.print("Board info");
   oled.setCursorXY(2, 29);
+  oled.print("Board info");
+  oled.setCursorXY(2, 43);
   oled.print("EARASE");
+  oled.setCursorXY(2, 15);
+  oled.print("Auto mode");
+  oled.roundRect(63, 15, 63 + 12, 21, OLED_STROKE);
+  if (Auto_mode)
+    oled.roundRect(64 + 5, 16, 64 + 10, 20, OLED_FILL);
+  else
+    oled.roundRect(64, 16, 64 + 5, 20, OLED_FILL);
   oled.update();
 }
 
@@ -186,6 +199,7 @@ void setup()
   pinMode(BAT_LEVEL_PIN, INPUT);
   EEPROM.begin(1000);
   EEPROM.get(0, ADDR);
+  EEPROM.get(10, Auto_mode);
   init_btns();
   oled.init();
   Wire.setClock(800000L);
@@ -212,12 +226,18 @@ void setup()
       file = root.openNextFile();
     }
     print_files(select_file);
-    ESPFlasherInit(true, &Serial);
+    // ESPFlasherInit(true, &Serial);
   }
 }
 
 void loop()
 {
+  // Serial.print(bat_level);
+  // Serial.print("    ");
+  // Serial.print(analogRead(BAT_LEVEL_PIN));
+  // Serial.print("    ");
+  // Serial.println(map(analogRead(BAT_LEVEL_PIN), 3250, 3500, 0, 100));
+
   btn_L.tick();
   btn_C.tick();
   btn_R.tick();
@@ -238,13 +258,26 @@ void loop()
         str.toCharArray(buf, 255);
         Serial.print("0x");
         Serial.println(strtoul(ADDR, NULL, 16), HEX);
-        ESPFlasherInit(true, &Serial);
-        uint8_t err = flasing("/bootloader.bin", 0x1000);
+        uint8_t err;
+        if (Auto_mode)
+        {
+          ESPFlasherInit(true, &Serial);
+          // ESPFlasherConnect();
+          err = flasing("/bootloader.bin", 0x1000);
           oled.clear();
-        ESPFlasherInit(true, &Serial);
-        err = flasing("/partitions.bin", 0x8000);
+          oled.setCursorXY(5, 5);
+          oled.print("Flashing...");
+          oled.rect(0, 15, 127, 30, OLED_STROKE);
+          ESPFlasherInit(true, &Serial);
+          // ESPFlasherConnect();
+          err = flasing("/partitions.bin", 0x8000);
           oled.clear();
+          oled.setCursorXY(5, 5);
+          oled.print("Flashing...");
+          oled.rect(0, 15, 127, 30, OLED_STROKE);
+        }
         ESPFlasherInit(true, &Serial);
+        // ESPFlasherConnect();
         err = flasing(buf, strtoul(ADDR, NULL, 16));
         if (err == CONNECT_ERROR)
         {
@@ -319,6 +352,43 @@ void loop()
         page = 0;
         print_files(select_file);
       }
+      else if (info_select == 1)
+      {
+        Auto_mode = !Auto_mode;
+        EEPROM.put(10, Auto_mode);
+        EEPROM.commit();
+        print_info();
+      }
+      else if (info_select == 3)
+      {
+        oled.clear();
+        oled.setCursorXY(29, 27);
+        oled.print("ERASE FLASH!");
+        oled.update();
+        ESPFlasherInit(true, &Serial);
+        esp_loader_error_t err = ESPFlasherConnect();
+        if (err == ESP_LOADER_SUCCESS)
+        {
+          Erase_flash();
+          oled.clear();
+          oled.setCursorXY(40, 27);
+          oled.print("SUCCESS!");
+          oled.update();
+          delay(1000);
+        }
+        else
+        {
+          Serial.println("Connect error");
+          // oled.init();
+          oled.clear();
+          oled.setScale(1);
+          oled.setCursorXY(20, 27);
+          oled.print("Connect error!");
+          oled.update();
+          delay(1500);
+        }
+        print_info();
+      }
     }
   }
 
@@ -352,8 +422,8 @@ void loop()
     else if (page == 3)
     {
       info_select++;
-      if (info_select > 2)
-        info_select = 2;
+      if (info_select > 3)
+        info_select = 3;
       print_info();
     }
   }
@@ -395,13 +465,59 @@ void loop()
       print_info();
     }
   }
-  bat_level = constrain(map(KalmanFilter(analogRead(BAT_LEVEL_PIN)), 3250, 3550, 0, 100), 0, 100);
+
+  if (btn_C.isDouble())
+  {
+    if (page == 1)
+    {
+      if (cursor == 1)
+      {
+        CHAR_select--;
+        print_page_1(-1);
+      }
+    }
+  }
+  if (!digitalRead(LEFT_BTN) && !digitalRead(RIGTH_BTN))
+  {
+    oled.clear();
+    oled.setCursorXY(40, 20);
+    oled.print("EEPROM");
+    oled.setCursorXY(40, 20 + 14);
+    oled.print("CLEAN!");
+    oled.update();
+    for (int i = 0; i < 8; i++)
+    {
+      ADDR[i]='0';
+      EEPROM.put(0, ADDR);
+    }
+    Auto_mode = 0;
+    EEPROM.put(10, Auto_mode);
+    // for (int i = 0; i < 100; i++)
+    // {
+    //   EEPROM.put(i, 0);
+    // }
+    EEPROM.commit();
+    delay(1500);
+    if (page == 0)
+      print_files(select_file);
+    else if (page == 1)
+      print_page_1(cursor);
+    else if (page == 3)
+      print_info();
+  }
+
+  bat_level = constrain(KalmanFilter(map(analogRead(BAT_LEVEL_PIN), 3250, 3550, 0, 10)), 0, 10);
+  // Serial.print(bat_level);
+  // Serial.print("    ");
+  // Serial.print(analogRead(BAT_LEVEL_PIN));
+  // Serial.print("    ");
+  // Serial.println(map(analogRead(BAT_LEVEL_PIN), 3250, 3500, 0, 100));
   if (page == 0)
   {
-    if (last_bat_level != map(bat_level, 0, 100, 0, 10))
+    if (last_bat_level != bat_level)
     {
       print_files(select_file);
-      last_bat_level = map(bat_level, 0, 100, 0, 10);
+      last_bat_level = bat_level;
     }
   }
 }
